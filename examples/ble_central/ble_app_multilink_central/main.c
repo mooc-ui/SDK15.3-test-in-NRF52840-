@@ -623,7 +623,7 @@ int main(void)
             }
         }
         #endif
-        
+        //test gitkraken
         #if 1
         if(m_again_scan_flag){     //修改完mac,scan是停止，只能放到这个地方启动scan      
             m_again_scan_flag = 0;

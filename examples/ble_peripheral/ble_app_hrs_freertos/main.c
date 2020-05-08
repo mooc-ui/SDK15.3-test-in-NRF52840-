@@ -170,6 +170,13 @@ static TaskHandle_t m_logger_thread;                                /**< Definit
 
 static TaskHandle_t m_task1_thread;
 static TaskHandle_t m_task2_thread;
+static TaskHandle_t m_send_task_thread;
+static TaskHandle_t m_receive_task_thread;
+
+
+QueueHandle_t Test_Queue = NULL;
+#define QUEUE_LEN 4
+#define QUEUE_SIZE 4
 
 static void advertising_start(void * p_erase_bonds);
 
@@ -739,7 +746,8 @@ static void bsp_event_handler(bsp_event_t event)
 
     switch (event)
     {
-        case BSP_EVENT_SLEEP:
+        case BSP_EVENT_SLEEP://按键0按下就会执行改事件
+            NRF_LOG_INFO("BUTTON0 push");
             sleep_mode_enter();
             break;
 
@@ -761,6 +769,18 @@ static void bsp_event_handler(bsp_event_t event)
                     APP_ERROR_CHECK(err_code);
                 }
             }
+            break;
+        case BSP_EVENT_KEY_1://按键1按下
+            bsp_board_led_on(BSP_BOARD_LED_1);
+            NRF_LOG_INFO("KEY1 PUSH");
+            break;
+        case BSP_EVENT_KEY_2://按键2按下
+            bsp_board_led_off(BSP_BOARD_LED_1);
+            NRF_LOG_INFO("KEY2 PUSH");
+            break;
+        case BSP_EVENT_KEY_3://按键3按下
+            bsp_board_led_invert(BSP_BOARD_LED_1);
+            NRF_LOG_INFO("KEY3 PUSH");
             break;
 
         default:
@@ -932,12 +952,12 @@ static void clock_init(void)
 
 
 static void task1(void * p_context){
-    
     while(1){
         bsp_board_led_on(BSP_BOARD_LED_2);
         vTaskDelay(1000);
         bsp_board_led_off(BSP_BOARD_LED_2);
         vTaskDelay(1000);
+              
         //NRF_LOG_INFO("i'm task1");
         //pass
     }
@@ -956,6 +976,42 @@ static void task2(void *p_context){
 }
 
 
+
+static void receive_task(void *p_context){
+    BaseType_t xReturn = pdTRUE;//定义一个创建信息返回值，默认为pdTRUE
+    uint32_t r_queue;//定义一个接受消息的变量
+    while(1){
+        xReturn = xQueueReceive(Test_Queue, &r_queue, portMAX_DELAY);
+        if(pdTRUE == xReturn){
+            NRF_LOG_INFO("receive data is %d",r_queue);
+            //bsp_board_led_invert(BSP_BOARD_LED_2);
+        }else{
+            NRF_LOG_INFO("receive data error:0x%x",xReturn);
+        }
+    }
+}
+
+
+static void send_task(void *p_context){
+    BaseType_t xReturn = pdPASS;
+    uint32_t send_data1 = 1;
+    uint32_t send_data2 = 2;
+    static uint8_t count = 4;
+    while(1){
+        while(count){
+            count = count-1;
+            xReturn = xQueueSend(Test_Queue, &send_data1, 0);
+            if(pdPASS == xReturn){
+                NRF_LOG_INFO("message sned ok");
+            }else{
+                NRF_LOG_INFO("message send failed");
+            }
+            vTaskDelay(1000);  
+        }        
+    }
+}
+
+
 /*
 任务的几种状态:
            挂起状态
@@ -970,8 +1026,14 @@ static void task2(void *p_context){
 
 */
 
-static void task_create_func(){
-  
+static void queue_init(void){
+    Test_Queue = xQueueCreate((UBaseType_t ) QUEUE_LEN,/* 消息队列的长度 */
+    (UBaseType_t ) QUEUE_SIZE);/* 消息的大小 */
+    if (NULL != Test_Queue)
+    NRF_LOG_INFO("create Test_Queue ok!");  
+}
+
+static void task_create_func(){   
     #if NRF_LOG_ENABLED
         // Start execution.
         if (pdPASS != xTaskCreate(logger_thread, "LOGGER", 256, NULL, 1, &m_logger_thread))
@@ -980,7 +1042,8 @@ static void task_create_func(){
         }
     #endif 
 
-
+    queue_init();//create queue
+    
     if(pdPASS != xTaskCreate(task1, "TASK1", configMINIMAL_STACK_SIZE+30, NULL, 2, &m_task1_thread))
     {
         NRF_LOG_INFO("create task1 error");
@@ -989,8 +1052,18 @@ static void task_create_func(){
     if(pdPASS != xTaskCreate(task2, "TASK2", configMINIMAL_STACK_SIZE+10, NULL, 2, &m_task2_thread))
     {
         NRF_LOG_INFO("create task2 error");
-        //APP_ERROR_HANDLER(NRF_ERROR_NO_MEM);
+        APP_ERROR_HANDLER(NRF_ERROR_NO_MEM);
     }     
+    if(pdPASS != xTaskCreate(send_task, "send_task", configMINIMAL_STACK_SIZE+10, NULL, 2, &m_receive_task_thread))
+    {
+        NRF_LOG_INFO("create m_receive_task_thread error");
+        APP_ERROR_HANDLER(NRF_ERROR_NO_MEM);
+    }     
+    if(pdPASS != xTaskCreate(receive_task, "receive_task", configMINIMAL_STACK_SIZE+10, NULL, 2, &m_send_task_thread))
+    {
+        NRF_LOG_INFO("create receive_task error");
+        APP_ERROR_HANDLER(NRF_ERROR_NO_MEM);
+    }    
 
 }
 

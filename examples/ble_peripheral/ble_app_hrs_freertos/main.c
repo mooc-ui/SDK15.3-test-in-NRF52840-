@@ -94,7 +94,7 @@
 #define APP_BLE_CONN_CFG_TAG                1                                       /**< A tag identifying the SoftDevice BLE configuration. */
 
 #define APP_ADV_INTERVAL                    300                                     /**< The advertising interval (in units of 0.625 ms. This value corresponds to 187.5 ms). */
-#define APP_ADV_DURATION                    18000                                       /**< The advertising duration (180 seconds) in units of 10 milliseconds. */
+#define APP_ADV_DURATION                    0//18000    广播不超时，一直广播                                   /**< The advertising duration (180 seconds) in units of 10 milliseconds. */
 
 #define BATTERY_LEVEL_MEAS_INTERVAL         2000                                    /**< Battery level measurement interval (ms). */
 #define MIN_BATTERY_LEVEL                   81                                      /**< Minimum simulated battery level. */
@@ -634,7 +634,7 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
 
         case BLE_ADV_EVT_IDLE://停止广播
             NRF_LOG_INFO("stop adv...");
-            sleep_mode_enter();
+            //sleep_mode_enter();
             break;
 
         default:
@@ -955,6 +955,20 @@ static void task2(void *p_context){
     }
 }
 
+
+/*
+任务的几种状态:
+           挂起状态
+         *         *
+        /  \         \
+            *
+      就绪态 <-->  运行状态
+         *
+          \       /
+                 *
+           阻塞状态
+
+*/
 
 static void task_create_func(){
   

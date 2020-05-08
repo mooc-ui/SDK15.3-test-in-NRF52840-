@@ -84,6 +84,8 @@
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
 
+#include "nrf_delay.h"
+
 
 #define DEVICE_NAME                         "Nordic_HRM"                            /**< Name of device. Will be included in the advertising data. */
 #define MANUFACTURER_NAME                   "NordicSemiconductor"                   /**< Manufacturer. Will be passed to Device Information Service. */
@@ -165,6 +167,9 @@ static TimerHandle_t m_sensor_contact_timer;                        /**< Definit
 #if NRF_LOG_ENABLED
 static TaskHandle_t m_logger_thread;                                /**< Definition of Logger thread. */
 #endif
+
+static TaskHandle_t m_task1_thread;
+static TaskHandle_t m_task2_thread;
 
 static void advertising_start(void * p_erase_bonds);
 
@@ -627,7 +632,8 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
             APP_ERROR_CHECK(err_code);
             break;
 
-        case BLE_ADV_EVT_IDLE:
+        case BLE_ADV_EVT_IDLE://停止广播
+            NRF_LOG_INFO("stop adv...");
             sleep_mode_enter();
             break;
 
@@ -823,8 +829,8 @@ static void advertising_init(void)
     init.advdata.uuids_complete.p_uuids  = m_adv_uuids;
 
     init.config.ble_adv_fast_enabled  = true;
-    init.config.ble_adv_fast_interval = APP_ADV_INTERVAL;
-    init.config.ble_adv_fast_timeout  = APP_ADV_DURATION;
+    init.config.ble_adv_fast_interval = APP_ADV_INTERVAL;//广播间隔
+    init.config.ble_adv_fast_timeout  = APP_ADV_DURATION;//广播超时停止代码
 
     init.evt_handler = on_adv_evt;
 
@@ -925,6 +931,56 @@ static void clock_init(void)
 }
 
 
+static void task1(void * p_context){
+    
+    while(1){
+        bsp_board_led_on(BSP_BOARD_LED_2);
+        vTaskDelay(1000);
+        bsp_board_led_off(BSP_BOARD_LED_2);
+        vTaskDelay(1000);
+        //NRF_LOG_INFO("i'm task1");
+        //pass
+    }
+}
+
+static void task2(void *p_context){
+    
+    while(1){
+        bsp_board_led_on(BSP_BOARD_LED_3);
+        vTaskDelay(1000);
+        bsp_board_led_off(BSP_BOARD_LED_3);
+        vTaskDelay(1000);
+        //NRF_LOG_INFO("i'm task2");
+        //pass
+    }
+}
+
+
+static void task_create_func(){
+  
+    #if NRF_LOG_ENABLED
+        // Start execution.
+        if (pdPASS != xTaskCreate(logger_thread, "LOGGER", 256, NULL, 1, &m_logger_thread))
+        {
+            APP_ERROR_HANDLER(NRF_ERROR_NO_MEM);
+        }
+    #endif 
+
+
+    if(pdPASS != xTaskCreate(task1, "TASK1", configMINIMAL_STACK_SIZE+30, NULL, 2, &m_task1_thread))
+    {
+        NRF_LOG_INFO("create task1 error");
+        APP_ERROR_HANDLER(NRF_ERROR_NO_MEM);
+    }
+    if(pdPASS != xTaskCreate(task2, "TASK2", configMINIMAL_STACK_SIZE+10, NULL, 2, &m_task2_thread))
+    {
+        NRF_LOG_INFO("create task2 error");
+        //APP_ERROR_HANDLER(NRF_ERROR_NO_MEM);
+    }     
+
+}
+
+
 /**@brief Function for application main entry.
  */
 int main(void)
@@ -937,14 +993,6 @@ int main(void)
 
     // Do not start any interrupt that uses system functions before system initialisation.
     // The best solution is to start the OS before any other initalisation.
-
-#if NRF_LOG_ENABLED
-    // Start execution.
-    if (pdPASS != xTaskCreate(logger_thread, "LOGGER", 256, NULL, 1, &m_logger_thread))
-    {
-        APP_ERROR_HANDLER(NRF_ERROR_NO_MEM);
-    }
-#endif
 
     // Activate deep sleep mode.
     SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
@@ -962,13 +1010,16 @@ int main(void)
     sensor_simulator_init();
     conn_params_init();
     peer_manager_init();
-    application_timers_start();
+    //application_timers_start();
+    
+    task_create_func();
 
     // Create a FreeRTOS task for the BLE stack.
     // The task will run advertising_start() before entering its loop.
     nrf_sdh_freertos_init(advertising_start, &erase_bonds);
 
-    NRF_LOG_INFO("HRS FreeRTOS example started.");
+    NRF_LOG_INFO("HRS FreeRTOS example started.");       
+    
     // Start FreeRTOS scheduler.
     vTaskStartScheduler();
 
@@ -977,5 +1028,9 @@ int main(void)
         APP_ERROR_HANDLER(NRF_ERROR_FORBIDDEN);
     }
 }
+
+/*
+@renfence:https://github.com/lee35210/nRF52840_BLE_FREERTOS_MLX90614/blob/master/main.c
+*/
 
 

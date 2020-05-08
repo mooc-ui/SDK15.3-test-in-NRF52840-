@@ -168,8 +168,15 @@ static TimerHandle_t m_sensor_contact_timer;                        /**< Definit
 static TaskHandle_t m_logger_thread;                                /**< Definition of Logger thread. */
 #endif
 
-static TaskHandle_t m_task1_thread;
-static TaskHandle_t m_task2_thread;
+static TaskHandle_t m_task1_thread = NULL;
+static TaskHandle_t m_task2_thread = NULL;
+static TaskHandle_t m_send_task_thread = NULL;
+static TaskHandle_t m_receive_task_thread = NULL;
+
+static QueueHandle_t BinarySem_Handle = NULL;//binary semaphore handle
+
+static bool m_key1_press = 0;
+static bool m_key2_press = 0;
 
 static void advertising_start(void * p_erase_bonds);
 
@@ -762,7 +769,15 @@ static void bsp_event_handler(bsp_event_t event)
                 }
             }
             break;
-
+        case BSP_EVENT_KEY_1:
+            m_key1_press = 1;
+            break;
+        case BSP_EVENT_KEY_2:
+            m_key2_press = 1;
+            break;        
+        case BSP_EVENT_KEY_3:
+            break;
+        
         default:
             break;
     }
@@ -955,6 +970,41 @@ static void task2(void *p_context){
     }
 }
 
+static void send_task(void* p_context){
+    BaseType_t xReturn = pdTRUE;
+    while(1){
+        if(m_key1_press){
+            NRF_LOG_INFO("button1 press,m_key1_press =%d",m_key1_press);
+            m_key1_press = 0;
+            xReturn = xSemaphoreGive(BinarySem_Handle);//给出二值信号量
+            if(xReturn == pdTRUE){
+                bsp_board_led_invert(BSP_BOARD_LED_1);
+                NRF_LOG_INFO("binary semaphore give ok");
+            }else{
+                NRF_LOG_INFO("binary semaphore give failed:%d",xReturn);
+            }
+
+        }//此处延时的目的是让单片机30ms扫描一次
+        vTaskDelay(20);//这个延时很重要，如果没有这个延时，就不会打印log
+    }
+}
+
+static void receive_task(void* p_context){
+    BaseType_t xReturn = pdPASS;
+    while(1){
+        if(m_key2_press){
+            m_key2_press = 0;
+            xReturn = xSemaphoreTake(BinarySem_Handle, portMAX_DELAY);
+            if(pdTRUE == xReturn){
+                NRF_LOG_INFO("binary semaphore take ok");
+            }else{
+                NRF_LOG_INFO("binary semaphore take failed");
+            }
+        }//此处延时的目的是让单片机30ms扫描一次
+        vTaskDelay(20);//这个延时很重要，如果没有这个延时，就不会打印log
+    }
+}
+
 
 /*
 任务的几种状态:
@@ -970,6 +1020,13 @@ static void task2(void *p_context){
 
 */
 
+static void create_binary_semaphore(void){
+    BinarySem_Handle = xSemaphoreCreateBinary();
+    if(NULL != BinarySem_Handle){
+        NRF_LOG_INFO("binary semaphore create ok;press button2 you can give a binary semaphore, press button3 you can take a binary semaphore");
+    }
+}
+
 static void task_create_func(){
   
     #if NRF_LOG_ENABLED
@@ -980,6 +1037,7 @@ static void task_create_func(){
         }
     #endif 
 
+    create_binary_semaphore();
 
     if(pdPASS != xTaskCreate(task1, "TASK1", configMINIMAL_STACK_SIZE+30, NULL, 2, &m_task1_thread))
     {
@@ -989,9 +1047,20 @@ static void task_create_func(){
     if(pdPASS != xTaskCreate(task2, "TASK2", configMINIMAL_STACK_SIZE+10, NULL, 2, &m_task2_thread))
     {
         NRF_LOG_INFO("create task2 error");
-        //APP_ERROR_HANDLER(NRF_ERROR_NO_MEM);
+        APP_ERROR_HANDLER(NRF_ERROR_NO_MEM);
+    }
+    
+    if(pdPASS != xTaskCreate(send_task, "SEND_TASK", configMINIMAL_STACK_SIZE+10, NULL, 2, &m_send_task_thread))
+    {
+        NRF_LOG_INFO("create send_task error");
+        APP_ERROR_HANDLER(NRF_ERROR_NO_MEM);
     }     
-
+    if(pdPASS != xTaskCreate(receive_task, "RECEIVE_TASK", configMINIMAL_STACK_SIZE+10, NULL, 2, &m_receive_task_thread))
+    {
+        NRF_LOG_INFO("create send_task error");
+        APP_ERROR_HANDLER(NRF_ERROR_NO_MEM);
+    }  
+    
 }
 
 

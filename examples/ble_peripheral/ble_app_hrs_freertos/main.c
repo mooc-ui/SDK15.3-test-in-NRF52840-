@@ -168,11 +168,17 @@ static TimerHandle_t m_sensor_contact_timer;                        /**< Definit
 static TaskHandle_t m_logger_thread;                                /**< Definition of Logger thread. */
 #endif
 
-static TaskHandle_t m_task1_thread;
-static TaskHandle_t m_task2_thread;
-static TaskHandle_t m_send_task_thread;
-static TaskHandle_t m_receive_task_thread;
+static TaskHandle_t m_task1_thread = NULL;
+static TaskHandle_t m_task2_thread = NULL;
+static TaskHandle_t m_send_task_thread= NULL;
+static TaskHandle_t m_receive_task_thread= NULL;
+static TaskHandle_t AppTaskCreate_Handle = NULL;/* 创建任务句柄 */
 
+static TimerHandle_t Swtmr1_Handle = NULL;//软件定时器句柄
+static TimerHandle_t Swtmr2_Handle = NULL;
+
+static uint32_t TmrCb_Count1 = 0;//记录软件定时器1回调函数执行次数
+static uint32_t TmrCb_Count2 = 0;
 
 QueueHandle_t Test_Queue = NULL;
 #define QUEUE_LEN 4
@@ -953,13 +959,14 @@ static void clock_init(void)
 
 static void task1(void * p_context){
     while(1){
-        bsp_board_led_on(BSP_BOARD_LED_2);
-        vTaskDelay(1000);
-        bsp_board_led_off(BSP_BOARD_LED_2);
-        vTaskDelay(1000);
+//        bsp_board_led_on(BSP_BOARD_LED_2);
+//        vTaskDelay(1000);
+//        bsp_board_led_off(BSP_BOARD_LED_2);
+//        vTaskDelay(1000);
               
         //NRF_LOG_INFO("i'm task1");
         //pass
+        vTaskDelay(20);//如果while里面不加延时，回导致rtt不打印log
     }
 }
 
@@ -1002,7 +1009,7 @@ static void send_task(void *p_context){
             count = count-1;
             xReturn = xQueueSend(Test_Queue, &send_data1, 0);
             if(pdPASS == xReturn){
-                NRF_LOG_INFO("message sned ok");
+                NRF_LOG_INFO("message send ok");
             }else{
                 NRF_LOG_INFO("message send failed");
             }
@@ -1026,11 +1033,54 @@ static void send_task(void *p_context){
 
 */
 
+static void Swtmr1_Callback(void *p_context){
+    TickType_t tick_num1;
+    TmrCb_Count1++;/* 每回调一次加一 */
+    tick_num1 = xTaskGetTickCount();//获取滴答定时器的计数值
+    bsp_board_led_invert(BSP_BOARD_LED_1);
+    NRF_LOG_INFO("tick1 count is %d",tick_num1);
+    
+}
+
+static void Swtmr2_Callback(void* p_context){
+    TickType_t tick_num2;
+    TmrCb_Count2++;/* 每回调一次加一 */
+    tick_num2 = xTaskGetTickCount();//获取滴答定时器的计数值
+    bsp_board_led_invert(BSP_BOARD_LED_2);
+    NRF_LOG_INFO("tick2 count is %d",tick_num2);
+}
+
+
+
+static void app_task_create(void* p_context){
+    taskENTER_CRITICAL();//进入临界区
+    Swtmr1_Handle = xTimerCreate((const char*)"AutoReloadTimer",
+                                pdMS_TO_TICKS(1000),//(TickType_t)1000,//定时器周期    pdMS_TO_TICKS(500)---->500ms
+                                (UBaseType_t)pdTRUE,//周期模式
+                                (void*)1,//为每个定时器分配一个索引的唯一ID
+                                (TimerCallbackFunction_t)Swtmr1_Callback);
+    if(Swtmr1_Handle != NULL){
+        xTimerStart(Swtmr1_Handle,0);//启动定时器1
+    }
+    
+    Swtmr2_Handle = xTimerCreate((const char*)"OneShotTimer",
+                                pdMS_TO_TICKS(500),//(TickType_t)1000,//定时器周期    pdMS_TO_TICKS(500)---->500ms
+                                (UBaseType_t)pdFALSE,//非周期模式（执行一次）
+                                (void*)1,//为每个定时器分配一个索引的唯一ID
+                                (TimerCallbackFunction_t)Swtmr2_Callback);
+    if(Swtmr2_Handle != NULL){
+        xTimerStart(Swtmr2_Handle,0);//启动定时器2
+    }
+    vTaskDelete(AppTaskCreate_Handle);//删除任务
+    taskEXIT_CRITICAL();//退出临界区
+}
+
+
 static void queue_init(void){
     Test_Queue = xQueueCreate((UBaseType_t ) QUEUE_LEN,/* 消息队列的长度 */
-    (UBaseType_t ) QUEUE_SIZE);/* 消息的大小 */
-    if (NULL != Test_Queue)
-    NRF_LOG_INFO("create Test_Queue ok!");  
+                            (UBaseType_t ) QUEUE_SIZE);/* 消息的大小 */
+                            if (NULL != Test_Queue)
+                            NRF_LOG_INFO("create queue init ok?");
 }
 
 static void task_create_func(){   
@@ -1041,7 +1091,7 @@ static void task_create_func(){
             APP_ERROR_HANDLER(NRF_ERROR_NO_MEM);
         }
     #endif 
-
+        
     queue_init();//create queue
     
     if(pdPASS != xTaskCreate(task1, "TASK1", configMINIMAL_STACK_SIZE+30, NULL, 2, &m_task1_thread))
@@ -1054,17 +1104,22 @@ static void task_create_func(){
         NRF_LOG_INFO("create task2 error");
         APP_ERROR_HANDLER(NRF_ERROR_NO_MEM);
     }     
-    if(pdPASS != xTaskCreate(send_task, "send_task", configMINIMAL_STACK_SIZE+10, NULL, 2, &m_receive_task_thread))
+//    if(pdPASS != xTaskCreate(send_task, "send_task", configMINIMAL_STACK_SIZE+10, NULL, 2, &m_receive_task_thread))
+//    {
+//        NRF_LOG_INFO("create m_receive_task_thread error");
+//        APP_ERROR_HANDLER(NRF_ERROR_NO_MEM);
+//    }     
+//    if(pdPASS != xTaskCreate(receive_task, "receive_task", configMINIMAL_STACK_SIZE+10, NULL, 2, &m_send_task_thread))
+//    {
+//        NRF_LOG_INFO("create receive_task error");
+//        APP_ERROR_HANDLER(NRF_ERROR_NO_MEM);
+//    }     
+    //该任务主要是创建2个定时器，创建完了只有就会将该任务删除
+    if(pdPASS != xTaskCreate(app_task_create, "APP_TASK_CREATE", configMINIMAL_STACK_SIZE+10, NULL, 2, &AppTaskCreate_Handle))
     {
-        NRF_LOG_INFO("create m_receive_task_thread error");
+        NRF_LOG_INFO("create app task error");
         APP_ERROR_HANDLER(NRF_ERROR_NO_MEM);
     }     
-    if(pdPASS != xTaskCreate(receive_task, "receive_task", configMINIMAL_STACK_SIZE+10, NULL, 2, &m_send_task_thread))
-    {
-        NRF_LOG_INFO("create receive_task error");
-        APP_ERROR_HANDLER(NRF_ERROR_NO_MEM);
-    }    
-
 }
 
 

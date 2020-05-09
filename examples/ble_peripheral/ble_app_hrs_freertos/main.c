@@ -85,6 +85,7 @@
 #include "nrf_log_default_backends.h"
 
 #include "nrf_delay.h"
+#include "event_groups.h"
 
 
 #define DEVICE_NAME                         "Nordic_HRM"                            /**< Name of device. Will be included in the advertising data. */
@@ -173,8 +174,12 @@ static TaskHandle_t m_task2_thread;
 static TaskHandle_t m_send_task_thread;
 static TaskHandle_t m_receive_task_thread;
 
+static bool m_key1_press = 0;
+static bool m_key2_press = 0;
 
-QueueHandle_t Test_Queue = NULL;
+static EventGroupHandle_t Event_Handle = NULL;//事件句柄
+
+static QueueHandle_t Test_Queue = NULL;
 #define QUEUE_LEN 4
 #define QUEUE_SIZE 4
 
@@ -771,11 +776,11 @@ static void bsp_event_handler(bsp_event_t event)
             }
             break;
         case BSP_EVENT_KEY_1://按键1按下
-            bsp_board_led_on(BSP_BOARD_LED_1);
+            m_key1_press = 1;
             NRF_LOG_INFO("KEY1 PUSH");
             break;
         case BSP_EVENT_KEY_2://按键2按下
-            bsp_board_led_off(BSP_BOARD_LED_1);
+            m_key2_press = 1;
             NRF_LOG_INFO("KEY2 PUSH");
             break;
         case BSP_EVENT_KEY_3://按键3按下
@@ -963,6 +968,8 @@ static void task1(void * p_context){
     }
 }
 
+
+
 static void task2(void *p_context){
     
     while(1){
@@ -976,39 +983,71 @@ static void task2(void *p_context){
 }
 
 
+/*
+等待接收事件标志
+如果 xClearOnExit 设置为 pdTRUE，那么在 xEventGroupWaitBits()返回之前
+如果满足等待条件（如果函数返回的原因不是超时），那么在事件组中设置
+的 uxBitsToWaitFor 中的任何位都将被清除。
+如果 xClearOnExit 设置为 pdFALSE，
+则在调用 xEventGroupWaitBits()时，不会更改事件组中设置的位。
 
+xWaitForAllBits 如果 xWaitForAllBits 设置为 pdTRUE，则当 uxBitsToWaitFor 中
+的所有位都设置或指定的块时间到期时， xEventGroupWaitBits()才返回。
+如果 xWaitForAllBits 设置为 pdFALSE，则当设置 uxBitsToWaitFor 中设置的任何
+一个位置 1 或指定的块时间到期时， xEventGroupWaitBits()都会返回。
+阻塞时间由 xTicksToWait 参数指定。
+*/
 static void receive_task(void *p_context){
-    BaseType_t xReturn = pdTRUE;//定义一个创建信息返回值，默认为pdTRUE
-    uint32_t r_queue;//定义一个接受消息的变量
+    EventBits_t r_event;//定义一个事件接受变量
     while(1){
-        xReturn = xQueueReceive(Test_Queue, &r_queue, portMAX_DELAY);
-        if(pdTRUE == xReturn){
-            NRF_LOG_INFO("receive data is %d",r_queue);
-            //bsp_board_led_invert(BSP_BOARD_LED_2);
-        }else{
-            NRF_LOG_INFO("receive data error:0x%x",xReturn);
-        }
+		r_event = xEventGroupWaitBits(
+					Event_Handle,	// The event group being tested.
+					BIT_0 | BIT_4,	// The bits within the event group to wait for.
+					pdTRUE,			// BIT_0 and BIT_4 should be cleared before returning.
+					pdFALSE,		// Don't wait for both bits, either bit will do.
+					portMAX_DELAY );	// Wait a maximum of 100ms for either bit to be set.
+
+		if( ( r_event & ( BIT_0 | BIT_4 ) ) == ( BIT_0 | BIT_4 ) )
+		{
+            bsp_board_led_invert(BSP_BOARD_LED_1);
+            NRF_LOG_INFO("event0 or event4 happend");
+			// xEventGroupWaitBits() returned because both bits were set.
+		}
+		else if( ( r_event & BIT_0 ) != 0 )
+		{
+            NRF_LOG_INFO("event0 happend");
+			// xEventGroupWaitBits() returned because just BIT_0 was set.
+		}
+		else if( ( r_event & BIT_4 ) != 0 )
+		{
+            NRF_LOG_INFO("event4 happend");
+			// xEventGroupWaitBits() returned because just BIT_4 was set.
+		}
+		else
+		{
+			// xEventGroupWaitBits() returned because xTicksToWait ticks passed
+			// without either BIT_0 or BIT_4 becoming set.
+		}
+        vTaskDelay(20);
     }
+    
 }
 
 
 static void send_task(void *p_context){
-    BaseType_t xReturn = pdPASS;
-    uint32_t send_data1 = 1;
-    uint32_t send_data2 = 2;
-    static uint8_t count = 4;
     while(1){
-        while(count){
-            count = count-1;
-            xReturn = xQueueSend(Test_Queue, &send_data1, 0);
-            if(pdPASS == xReturn){
-                NRF_LOG_INFO("message sned ok");
-            }else{
-                NRF_LOG_INFO("message send failed");
-            }
-            vTaskDelay(1000);  
-        }        
-    }
+        if(m_key1_press){
+            NRF_LOG_INFO("send task detect key1 press");
+            m_key1_press = 0;
+            bsp_board_led_invert(BSP_BOARD_LED_1);
+            xEventGroupSetBits(Event_Handle, BIT_0);//触发事件0
+        }
+        if(m_key2_press){
+            m_key2_press = 0;
+            xEventGroupSetBits(Event_Handle, BIT_4);//触发事件4
+        }//这个延时的位置不要弄错了;他是在while(1)里面
+        vTaskDelay(20);//没20ms扫描一次,这个延时很重要，没有它将不会打印log
+    }  
 }
 
 
@@ -1026,11 +1065,11 @@ static void send_task(void *p_context){
 
 */
 
-static void queue_init(void){
-    Test_Queue = xQueueCreate((UBaseType_t ) QUEUE_LEN,/* 消息队列的长度 */
-    (UBaseType_t ) QUEUE_SIZE);/* 消息的大小 */
-    if (NULL != Test_Queue)
-    NRF_LOG_INFO("create Test_Queue ok!");  
+static void event_init(void){
+    Event_Handle = xEventGroupCreate();//创建事件
+    if(NULL != Event_Handle){
+        NRF_LOG_INFO("event handle create ok;when you press button2.the LED2 will invert and the bit0 will set");
+    }
 }
 
 static void task_create_func(){   
@@ -1042,7 +1081,7 @@ static void task_create_func(){
         }
     #endif 
 
-    queue_init();//create queue
+    event_init();//create queue
     
     if(pdPASS != xTaskCreate(task1, "TASK1", configMINIMAL_STACK_SIZE+30, NULL, 2, &m_task1_thread))
     {

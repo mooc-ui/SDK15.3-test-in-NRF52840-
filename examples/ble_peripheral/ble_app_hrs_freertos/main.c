@@ -168,11 +168,18 @@ static TimerHandle_t m_sensor_contact_timer;                        /**< Definit
 static TaskHandle_t m_logger_thread;                                /**< Definition of Logger thread. */
 #endif
 
-static TaskHandle_t m_task1_thread;
-static TaskHandle_t m_task2_thread;
-static TaskHandle_t m_send_task_thread;
-static TaskHandle_t m_receive_task_thread;
+static TaskHandle_t m_task1_thread = NULL;
+static TaskHandle_t m_task2_thread = NULL;
+static TaskHandle_t m_send_task_thread = NULL;
+static TaskHandle_t m_receive_task_thread = NULL;
 
+//使用任务通知应该注意一些什么(比如使用的时候会出现哪些错误)
+//pdMS_TO_TICKS宏可以将ms转化为系统tick
+
+//任务通知的局限性
+/*
+
+*/
 
 QueueHandle_t Test_Queue = NULL;
 #define QUEUE_LEN 4

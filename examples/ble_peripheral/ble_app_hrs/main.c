@@ -1008,7 +1008,7 @@ static void power_management_task(void *p_context){
 }
 
 static void system_task(void *p_context){
-    NRF_LOG_INFO("I'am system event process");
+    //NRF_LOG_INFO("I'am system event process");
 }
 
 static void task_body(void){

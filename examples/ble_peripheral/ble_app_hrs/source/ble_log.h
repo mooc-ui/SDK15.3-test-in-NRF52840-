@@ -9,6 +9,7 @@
 #include "ble_srv_common.h"
 #include "nrf_sdh_ble.h"
 #include "nrf_ble_gatt.h"
+#include "nrf_log.h"
 //#define BLE_EEG_SERVICE_UUID            0xFEE0 
 
 //#define BLE_EEG_CTRL_CHAR_UUID			0xFEE1 
@@ -32,7 +33,7 @@
 
 #define BLE_LOG_UUID_SERVICE     0xFFEF//0x1523
                        
-#define BLE_LOG_UUID_LED_CHAR    0x1525
+#define BLE_LOG_UUID_LED_CHAR    0x1573
 #define BLE_LOG_UUID_BUTTON_CHAR 0x1524
                        
                        

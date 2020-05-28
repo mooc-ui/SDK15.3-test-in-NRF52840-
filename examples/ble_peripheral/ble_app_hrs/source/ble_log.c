@@ -86,10 +86,10 @@ uint32_t ble_log_init(ble_log_t * p_log, ble_log_init_t const * p_log_init)
 
 	// Add the data char.  这个地方要是打开的话需要调整start ram 和NRF_SDH_BLE_GATTS_ATTR_TAB_SIZE的大小
     //NRF_SDH_BLE_VS_UUID_COUNT 3  也需要更改
-//    err_code = ble_log_data_char_add(p_log);
-//	if (err_code != NRF_SUCCESS) {
-//        return err_code;
-//    }
+    err_code = ble_log_data_char_add(p_log);
+	if (err_code != NRF_SUCCESS) {
+        return err_code;
+    }
 
 //	// Add the read char.
 //    err_code = ble_log_read_char_add(p_log);
@@ -100,6 +100,26 @@ uint32_t ble_log_init(ble_log_t * p_log, ble_log_init_t const * p_log_init)
     return NRF_SUCCESS;
 }
 
+
+void on_write(ble_log_t *p_eeg, ble_evt_t const *p_ble_evt){
+    ble_gatts_evt_write_t* p_evt_write =  (ble_gatts_evt_write_t *)&p_ble_evt->evt.gatts_evt.params.write;
+    if (p_evt_write->handle == p_eeg->ctrl_handles.cccd_handle) {//ctrl 通道的通知
+		if (p_evt_write->len == 2) {
+			p_eeg->is_indicate_enabled = ble_srv_is_indication_enabled(p_evt_write->data);
+            }//当在手机端nrf connect 点击UUID为fee1的通知图标;就会执行到这里
+        NRF_LOG_INFO("UUID=0x1525 LED = %d.", p_eeg->is_indicate_enabled);        
+    } else if (p_evt_write->handle == p_eeg->data_handles.cccd_handle) {//data 通道的通知
+		if (p_evt_write->len == 2) {
+			p_eeg->is_notify_enabled = ble_srv_is_notification_enabled(p_evt_write->data);
+		}//当在手机端nrf connect 点击UUID为fee2的通知图标;就会执行到这里
+        NRF_LOG_INFO("eeg data point notify = %d.", p_eeg->is_notify_enabled);
+	}else if(p_evt_write->handle == p_eeg->ctrl_handles.value_handle){//ctrl 通道的写
+        //手机通过uuid为fee1的write通道发过来的数据;p_evt_write->data是一个数组
+        NRF_LOG_INFO("p_evt_write->data = %d.", p_evt_write->data[0]);
+    }else if(p_evt_write->handle == p_eeg->read_handles.value_handle){
+        //对应read通道
+    }
+}
 
 void ble_log_on_ble_evt(ble_evt_t const * p_ble_evt, void * p_context)
 {
@@ -116,7 +136,7 @@ void ble_log_on_ble_evt(ble_evt_t const * p_ble_evt, void * p_context)
 		    break;
 
 		case BLE_GATTS_EVT_WRITE:
-		    //on_write(p_eeg, p_ble_evt);
+		    on_write(p_eeg, p_ble_evt);
 		    break;
 
 		case BLE_GATTS_EVT_RW_AUTHORIZE_REQUEST:

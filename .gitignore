@@ -62,7 +62,7 @@ dkms.conf
 
 **/_build
 
-
+.msi
 **/si4
 
 **/hex

@@ -81,6 +81,16 @@
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
 
+#include "mring_queue.h"
+#include "rtc.h"
+#include "event_config.h"
+#include "ble_log.h"
+
+mrQueueHandle_t mrEvtQueue = NULL;
+mrQueueHandle_t mrAccQueue = NULL;
+mrQueueHandle_t mrAfeQueue = NULL;  
+static loopCallback lpcb[MAX_OPERA_NUM] = {0};
+
 
 #define DEVICE_NAME                         "Nordic_HRM"                            /**< Name of device. Will be included in the advertising data. */
 #define MANUFACTURER_NAME                   "NordicSemiconductor"                   /**< Manufacturer. Will be passed to Device Information Service. */
@@ -133,6 +143,7 @@
 
 BLE_HRS_DEF(m_hrs);                                                 /**< Heart rate service instance. */
 BLE_BAS_DEF(m_bas);                                                 /**< Structure used to identify the battery service. */
+BLE_LOG_DEF(m_log);
 NRF_BLE_GATT_DEF(m_gatt);                                           /**< GATT module instance. */
 NRF_BLE_QWR_DEF(m_qwr);                                             /**< Context for the Queued Write module.*/
 BLE_ADVERTISING_DEF(m_advertising);                                 /**< Advertising module instance. */
@@ -473,6 +484,7 @@ static void services_init(void)
     ble_hrs_init_t     hrs_init;
     ble_bas_init_t     bas_init;
     ble_dis_init_t     dis_init;
+    ble_log_init_t     log_init;
     nrf_ble_qwr_init_t qwr_init = {0};
     uint8_t            body_sensor_location;
 
@@ -522,6 +534,11 @@ static void services_init(void)
     dis_init.dis_char_rd_sec = SEC_OPEN;
 
     err_code = ble_dis_init(&dis_init);
+    APP_ERROR_CHECK(err_code);
+    
+    //log service init
+    memset(&log_init, 0, sizeof(log_init));
+    err_code = ble_log_init(&m_log, &log_init);
     APP_ERROR_CHECK(err_code);
 }
 
@@ -669,7 +686,7 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
             break;
 
         case BLE_ADV_EVT_IDLE:
-            sleep_mode_enter();
+            //sleep_mode_enter();
             break;
 
         default:
@@ -945,12 +962,93 @@ static void idle_state_handle(void)
     }
 }
 
+static void hardware_init(void){
+    /*里面应该包含各种外部硬件设备的状态
+    例如电池的状态、传感器的状态、整个设备所处在状态*/
+}
+
+static void add_loop_func(uint16_t opera_id, userDefFunc udf){
+    if(opera_id != 0 && udf != NULL){
+        if(opera_id <= MAX_OPERA_NUM){
+            lpcb[opera_id-1].event = opera_id;
+            lpcb[opera_id-1].func = udf;
+        }
+    }
+}
+
+static void sensor1_task(void *p_context){
+    NRF_LOG_INFO("I'am sensor1 process");
+}
+
+static void RadioLink_TxTask(void *p_context){
+    NRF_LOG_INFO("I'am radio tx task process");
+}
+
+static void RadioLink_RxTask(void *p_context){
+    NRF_LOG_INFO("I'am radio rx task process");
+}
+static void flash_read_write_task(void *p_context){
+    /*
+    switch(type){
+        case read:
+            break;
+        case write:
+            break;
+        default:
+            break;
+    }
+    */
+}
+static void sensor_data_process_task(void *p_context){
+    //
+}
+
+static void power_management_task(void *p_context){
+    //
+}
+
+static void system_task(void *p_context){
+    NRF_LOG_INFO("I'am system event process");
+}
+
+static void task_body(void){
+    add_loop_func(SENSOR_OP, sensor1_task);
+    add_loop_func(RADIO_TX_OP, RadioLink_TxTask);
+    add_loop_func(RADIO_RX_OP, RadioLink_RxTask);
+    add_loop_func(FLASH_WRITE_READ_OP, flash_read_write_task);
+    add_loop_func(SENSOR_DATA_PROCESS_OP, sensor_data_process_task);
+    add_loop_func(POWER_MANAGEMENT_OP, power_management_task);
+    add_loop_func(SYS_OP, system_task);
+}
+
+static void task_init(void){
+    mrEvtQueue = mring_queueInit(SYS_EVT_QUEUE);//队列初始化(相当于任务初始化)
+    mrAfeQueue = mring_queueInit(AFE_I2C_QUEUE);
+	mrAccQueue = mring_queueInit(ACC_I2C_QUEUE);
+}
+
+static void consume_task(){
+    if(NULL != mrEvtQueue) {
+        while(!mring_queueIsEmpty(mrEvtQueue)) {
+            stEvtBuffer buffer;
+            if(true == mring_queueReceive(mrEvtQueue, (void*)&buffer)) {
+                if(buffer.evt != 0) {
+                    if (lpcb[buffer.evt-1].func) {
+                        lpcb[buffer.evt-1].func(buffer.payload);
+                    }
+                } 
+            }
+        }
+    }
+}
 
 /**@brief Function for application main entry.
  */
 int main(void)
 {
     bool erase_bonds;
+    hardware_init();
+    task_init();
 
     // Initialize.
     log_init();
@@ -965,15 +1063,19 @@ int main(void)
     sensor_simulator_init();
     conn_params_init();
     peer_manager_init();
+    
+    rtc2_enable();
+    task_body();
 
     // Start execution.
     NRF_LOG_INFO("Heart Rate Sensor example started.");
     application_timers_start();
     advertising_start(erase_bonds);
-
+    
     // Enter main loop.
     for (;;)
     {
+        consume_task();
         idle_state_handle();
     }
 }

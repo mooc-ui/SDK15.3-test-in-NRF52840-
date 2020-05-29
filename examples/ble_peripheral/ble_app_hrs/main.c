@@ -245,21 +245,21 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
  */
 static void battery_level_update(void)
 {
-    ret_code_t err_code;
-    uint8_t  battery_level;
+//    ret_code_t err_code;
+//    uint8_t  battery_level;
 
-    battery_level = (uint8_t)sensorsim_measure(&m_battery_sim_state, &m_battery_sim_cfg);
+//    battery_level = (uint8_t)sensorsim_measure(&m_battery_sim_state, &m_battery_sim_cfg);
 
-    err_code = ble_bas_battery_level_update(&m_bas, battery_level, BLE_CONN_HANDLE_ALL);
-    if ((err_code != NRF_SUCCESS) &&
-        (err_code != NRF_ERROR_INVALID_STATE) &&
-        (err_code != NRF_ERROR_RESOURCES) &&
-        (err_code != NRF_ERROR_BUSY) &&
-        (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
-       )
-    {
-        APP_ERROR_HANDLER(err_code);
-    }
+//    err_code = ble_bas_battery_level_update(&m_bas, battery_level, BLE_CONN_HANDLE_ALL);
+//    if ((err_code != NRF_SUCCESS) &&
+//        (err_code != NRF_ERROR_INVALID_STATE) &&
+//        (err_code != NRF_ERROR_RESOURCES) &&
+//        (err_code != NRF_ERROR_BUSY) &&
+//        (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
+//       )
+//    {
+//        APP_ERROR_HANDLER(err_code);
+//    }
 }
 
 
@@ -287,30 +287,30 @@ static void battery_level_meas_timeout_handler(void * p_context)
  */
 static void heart_rate_meas_timeout_handler(void * p_context)
 {
-    static uint32_t cnt = 0;
-    ret_code_t      err_code;
-    uint16_t        heart_rate;
+//    static uint32_t cnt = 0;
+//    ret_code_t      err_code;
+//    uint16_t        heart_rate;
 
-    UNUSED_PARAMETER(p_context);
+//    UNUSED_PARAMETER(p_context);
 
-    heart_rate = (uint16_t)sensorsim_measure(&m_heart_rate_sim_state, &m_heart_rate_sim_cfg);
+//    heart_rate = (uint16_t)sensorsim_measure(&m_heart_rate_sim_state, &m_heart_rate_sim_cfg);
 
-    cnt++;
-    err_code = ble_hrs_heart_rate_measurement_send(&m_hrs, heart_rate);
-    if ((err_code != NRF_SUCCESS) &&
-        (err_code != NRF_ERROR_INVALID_STATE) &&
-        (err_code != NRF_ERROR_RESOURCES) &&
-        (err_code != NRF_ERROR_BUSY) &&
-        (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
-       )
-    {
-        APP_ERROR_HANDLER(err_code);
-    }
+//    cnt++;
+//    err_code = ble_hrs_heart_rate_measurement_send(&m_hrs, heart_rate);
+//    if ((err_code != NRF_SUCCESS) &&
+//        (err_code != NRF_ERROR_INVALID_STATE) &&
+//        (err_code != NRF_ERROR_RESOURCES) &&
+//        (err_code != NRF_ERROR_BUSY) &&
+//        (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
+//       )
+//    {
+//        APP_ERROR_HANDLER(err_code);
+//    }
 
-    // Disable RR Interval recording every third heart rate measurement.
-    // NOTE: An application will normally not do this. It is done here just for testing generation
-    // of messages without RR Interval measurements.
-    m_rr_interval_enabled = ((cnt % 3) != 0);
+//    // Disable RR Interval recording every third heart rate measurement.
+//    // NOTE: An application will normally not do this. It is done here just for testing generation
+//    // of messages without RR Interval measurements.
+//    m_rr_interval_enabled = ((cnt % 3) != 0);
 }
 
 
@@ -474,6 +474,65 @@ static void nrf_qwr_error_handler(uint32_t nrf_error)
 }
 
 
+//notify(develop board send data to nrf connect app)
+uint32_t eeg_notify(uint8_t* msg, uint16_t len)
+{
+	uint32_t err_code;
+	
+	ble_log_t *p_log = &m_log;
+    //NRF_LOG_INFO("is_notify_enabled = %d is_indicate_enabled = %d....",p_log->is_notify_enabled,p_log->is_indicate_enabled);
+    if ((p_log->conn_handle != BLE_CONN_HANDLE_INVALID)      
+		&& (p_log->is_notify_enabled == true)) {  
+		uint16_t               hvx_len;
+		ble_gatts_hvx_params_t hvx_params;
+		hvx_len = len;
+		
+		memset(&hvx_params, 0, sizeof(hvx_params));
+
+        hvx_params.handle = p_log->ctrl_handles.value_handle;
+		hvx_params.type   = BLE_GATT_HVX_NOTIFICATION;//如果是indicate 则用BLE_GATT_HVX_INDICATION
+		hvx_params.offset = 0;
+		hvx_params.p_len  = &hvx_len;
+		hvx_params.p_data = msg;
+		err_code = sd_ble_gatts_hvx(p_log->conn_handle, &hvx_params);
+		if ((err_code == NRF_SUCCESS) && (hvx_len != len)) {
+			err_code = NRF_ERROR_DATA_SIZE;
+		}
+	}else {
+		err_code = NRF_ERROR_INVALID_STATE;
+	}
+
+	return err_code;
+}
+
+uint32_t eeg_indicate(uint8_t* msg, uint16_t len){
+	uint32_t err_code;
+	ble_log_t *p_log = &m_log;
+    if ((p_log->conn_handle != BLE_CONN_HANDLE_INVALID)      
+		&& (p_log->is_indicate_enabled == true)) {  
+		uint16_t               hvx_len;
+		ble_gatts_hvx_params_t hvx_params;
+		hvx_len = len;
+		
+		memset(&hvx_params, 0, sizeof(hvx_params));
+        NRF_LOG_INFO("start indicate  p_log->is_indicate_enabled = %d p_eeg->is_notify_enabled = %d",p_log->is_indicate_enabled, p_log->is_notify_enabled);
+        hvx_params.handle = p_log->ctrl_handles.value_handle;
+		hvx_params.type   = BLE_GATT_HVX_INDICATION;//如果是indicate 则用BLE_GATT_HVX_INDICATION
+		hvx_params.offset = 0;
+		hvx_params.p_len  = &hvx_len;
+		hvx_params.p_data = msg;
+		err_code = sd_ble_gatts_hvx(p_log->conn_handle, &hvx_params);//indicate or notify data
+		if ((err_code == NRF_SUCCESS) && (hvx_len != len)) {
+			err_code = NRF_ERROR_DATA_SIZE;
+		}       
+	}else {
+		err_code = NRF_ERROR_INVALID_STATE;
+	}
+
+	return err_code;
+}
+
+
 /**@brief Function for initializing services that will be used by the application.
  *
  * @details Initialize the Heart Rate, Battery and Device Information services.
@@ -495,28 +554,28 @@ static void services_init(void)
     APP_ERROR_CHECK(err_code);
 
     // Initialize Heart Rate Service.
-    body_sensor_location = BLE_HRS_BODY_SENSOR_LOCATION_FINGER;
+//    body_sensor_location = BLE_HRS_BODY_SENSOR_LOCATION_FINGER;
 
-    memset(&hrs_init, 0, sizeof(hrs_init));
+//    memset(&hrs_init, 0, sizeof(hrs_init));
 
-    hrs_init.evt_handler                 = NULL;
-    hrs_init.is_sensor_contact_supported = true;
-    hrs_init.p_body_sensor_location      = &body_sensor_location;
+//    hrs_init.evt_handler                 = NULL;
+//    hrs_init.is_sensor_contact_supported = true;
+//    hrs_init.p_body_sensor_location      = &body_sensor_location;
 
     // Here the sec level for the Heart Rate Service can be changed/increased.
-    hrs_init.hrm_cccd_wr_sec = SEC_OPEN;
-    hrs_init.bsl_rd_sec      = SEC_OPEN;
+//    hrs_init.hrm_cccd_wr_sec = SEC_OPEN;
+//    hrs_init.bsl_rd_sec      = SEC_OPEN;
 
-    err_code = ble_hrs_init(&m_hrs, &hrs_init);
-    APP_ERROR_CHECK(err_code);
+//    err_code = ble_hrs_init(&m_hrs, &hrs_init);
+//    APP_ERROR_CHECK(err_code);
 
     // Initialize Battery Service.
-    memset(&bas_init, 0, sizeof(bas_init));
+//    memset(&bas_init, 0, sizeof(bas_init));
 
-    bas_init.evt_handler          = NULL;
-    bas_init.support_notification = true;
-    bas_init.p_report_ref         = NULL;
-    bas_init.initial_batt_level   = 100;
+//    bas_init.evt_handler          = NULL;
+//    bas_init.support_notification = true;
+//    bas_init.p_report_ref         = NULL;
+//    bas_init.initial_batt_level   = 100;
 
     // Here the sec level for the Battery Service can be changed/increased.
     bas_init.bl_rd_sec        = SEC_OPEN;
@@ -1008,6 +1067,11 @@ static void power_management_task(void *p_context){
 }
 
 static void system_task(void *p_context){
+    uint8_t data_len = 20;
+    uint8_t data[20] = {0};
+    memset(data,get_time()%255,20);
+    eeg_notify(data, data_len);
+    eeg_indicate(data, data_len);
     //NRF_LOG_INFO("I'am system event process");
 }
 

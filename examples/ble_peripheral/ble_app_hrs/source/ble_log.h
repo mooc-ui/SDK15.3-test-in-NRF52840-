@@ -33,8 +33,8 @@
 
 #define BLE_LOG_UUID_SERVICE     0xFFEF//0x1523
                        
-#define BLE_LOG_UUID_LED_CHAR    0x1573
-#define BLE_LOG_UUID_BUTTON_CHAR 0x1524
+#define BLE_LOG_UUID_LED_CHAR    0xFEE2
+#define BLE_LOG_UUID_BUTTON_CHAR 0xFEE3
                        
                        
 #define BLE_LOG_DEF(_name)                                                                          \
@@ -90,6 +90,7 @@ struct ble_log_s
 
 void ble_log_on_ble_evt(ble_evt_t const * p_ble_evt, void * p_context);
 uint32_t ble_log_init(ble_log_t * p_log, ble_log_init_t const * p_log_init);
+void get_from_app_data(uint8_t *data);
 
 
 #endif

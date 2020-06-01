@@ -88,13 +88,6 @@ uint32_t ble_log_init(ble_log_t * p_log, ble_log_init_t const * p_log_init)
 	if (err_code != NRF_SUCCESS) {
         return err_code;
     }
-
-//	// Add the read char.
-//    err_code = ble_log_read_char_add(p_log);
-//	if (err_code != NRF_SUCCESS) {
-//        return err_code;
-//    }
-	
     return NRF_SUCCESS;
 }
 

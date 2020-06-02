@@ -452,6 +452,16 @@
               <FileType>5</FileType>
               <FilePath>..\..\..\source\ble_log.h</FilePath>
             </File>
+            <File>
+              <FileName>swtimer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\source\swtimer.c</FilePath>
+            </File>
+            <File>
+              <FileName>swtimer.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\..\..\source\swtimer.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -7484,6 +7494,16 @@
               <FileName>ble_log.h</FileName>
               <FileType>5</FileType>
               <FilePath>..\..\..\source\ble_log.h</FilePath>
+            </File>
+            <File>
+              <FileName>swtimer.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\source\swtimer.c</FilePath>
+            </File>
+            <File>
+              <FileName>swtimer.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\..\..\source\swtimer.h</FilePath>
             </File>
           </Files>
         </Group>

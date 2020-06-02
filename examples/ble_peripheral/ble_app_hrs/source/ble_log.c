@@ -124,6 +124,18 @@ void on_write(ble_log_t *p_eeg, ble_evt_t const *p_ble_evt){
 
 }
 
+static void on_hvc(ble_log_t * p_eeg, ble_evt_t const * p_ble_evt)
+{
+    ble_gatts_evt_hvc_t const * p_hvc = &p_ble_evt->evt.gatts_evt.params.hvc;
+
+    //if (p_hvc->handle == p_eeg->ctrl_handles.value_handle)//ctrl通道
+    if (p_hvc->handle == p_eeg->data_handles.value_handle)//data通道
+    {
+		p_eeg->is_confirm_indicated = true;
+        NRF_LOG_INFO("into on_hvc,is_confirm_indicated = %d",p_eeg->is_confirm_indicated);
+    }
+}
+
 /**@brief Function for handling the Connect event.
  *
  * @param[in]	 p_aux		 AUX structure.
@@ -163,7 +175,7 @@ void ble_log_on_ble_evt(ble_evt_t const * p_ble_evt, void * p_context)
 		    break;
 
 		case BLE_GATTS_EVT_HVC:
-		    //on_hvc(p_eeg, p_ble_evt);
+		    on_hvc(p_eeg, p_ble_evt);
 		    break;
 
 		default:

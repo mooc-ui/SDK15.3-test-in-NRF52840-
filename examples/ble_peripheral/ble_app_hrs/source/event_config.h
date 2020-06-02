@@ -14,6 +14,31 @@ enum
 	MAX_OPERA_NUM,
 };
 
+typedef struct
+{
+	uint16_t bleWriteOp;
+	uint16_t len;
+	uint8_t data[20];
+	uint8_t status;
+}st_bleWrite_t;
+
+
+
+/*
+brief:ble property include write/indicate/notify/read ect.
+*/
+typedef enum{
+    BLE_INDICATE = 1,
+    BLE_NOTIFY,
+    BLE_IDLE,
+    
+    BLE_PROPERTY_MAX,//can't to here
+}ble_property;
+
+//typedef enum{
+//    //
+//}board_status;
+
 typedef void (*userDefFunc)(void* pText);
 
 typedef struct _loopCallback

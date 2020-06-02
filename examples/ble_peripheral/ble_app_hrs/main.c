@@ -87,6 +87,7 @@
 #include "ble_log.h"
 
 mrQueueHandle_t mrEvtQueue = NULL;
+mrQueueHandle_t NonEvtQueue = NULL;
 mrQueueHandle_t mrAccQueue = NULL;
 mrQueueHandle_t mrAfeQueue = NULL;  
 static loopCallback lpcb[MAX_OPERA_NUM] = {0};
@@ -151,6 +152,7 @@ APP_TIMER_DEF(m_battery_timer_id);                                  /**< Battery
 APP_TIMER_DEF(m_heart_rate_timer_id);                               /**< Heart rate measurement timer. */
 APP_TIMER_DEF(m_rr_interval_timer_id);                              /**< RR interval timer. */
 APP_TIMER_DEF(m_sensor_contact_timer_id);                           /**< Sensor contact detected timer. */
+APP_TIMER_DEF(m_indicate_timer_id); 
 
 static uint16_t m_conn_handle         = BLE_CONN_HANDLE_INVALID;    /**< Handle of the current connection. */
 static bool     m_rr_interval_enabled = true;                       /**< Flag for enabling and disabling the registration of new RR interval measurements (the purpose of disabling this is just to test sending HRM without RR interval data. */
@@ -368,6 +370,17 @@ static void sensor_contact_detected_timeout_handler(void * p_context)
     ble_hrs_sensor_contact_detected_update(&m_hrs, sensor_contact_detected);
 }
 
+static void borad_indicate_timeout_handler(void *p_context){
+    //send data to phone
+    ble_property property = BLE_INDICATE;
+    uint32_t err_code;
+    stEvtBuffer buffer = {RADIO_TX_OP, &property};
+    if(mring_queueSend(mrEvtQueue, (void*)&buffer) == false){//send data failed restart indicate time
+        err_code = app_timer_start(m_indicate_timer_id, APP_TIMER_MODE_SINGLE_SHOT, NULL);
+        APP_ERROR_CHECK(err_code);
+    }
+}
+
 
 /**@brief Function for the Timer initialization.
  *
@@ -401,6 +414,13 @@ static void timers_init(void)
                                 APP_TIMER_MODE_REPEATED,
                                 sensor_contact_detected_timeout_handler);
     APP_ERROR_CHECK(err_code);
+    
+    //create my sw timer
+    err_code = app_timer_create(&m_indicate_timer_id,
+                                APP_TIMER_MODE_SINGLE_SHOT,
+                                borad_indicate_timeout_handler);
+    
+    
 }
 
 
@@ -495,6 +515,7 @@ uint32_t eeg_notify(uint8_t* msg, uint16_t len)
 		hvx_params.p_len  = &hvx_len;
 		hvx_params.p_data = msg;
 		err_code = sd_ble_gatts_hvx(p_log->conn_handle, &hvx_params);
+        NRF_LOG_INFO("notify sd_ble_gatts_hvx err_code = %x",err_code);
 		if ((err_code == NRF_SUCCESS) && (hvx_len != len)) {
 			err_code = NRF_ERROR_DATA_SIZE;
 		}
@@ -515,17 +536,24 @@ uint32_t eeg_indicate(uint8_t* msg, uint16_t len){
 		hvx_len = len;
 		
 		memset(&hvx_params, 0, sizeof(hvx_params));
-        NRF_LOG_INFO("start indicate  p_log->is_indicate_enabled = %d p_eeg->is_notify_enabled = %d",p_log->is_indicate_enabled, p_log->is_notify_enabled);
-        hvx_params.handle = p_log->ctrl_handles.value_handle;
+            
+        //NRF_LOG_INFO("start indicate  p_log->is_indicate_enabled = %d p_eeg->is_notify_enabled = %d",p_log->is_indicate_enabled, p_log->is_notify_enabled);
+        
+        //如果这个地方选错了通道就会出现BLE_ERROR_GATTS_SYS_ATTR_MISSING (err_code = 0x3401)
+        hvx_params.handle = p_log->data_handles.value_handle;// ctrl_handles.value_handle;
+            
 		hvx_params.type   = BLE_GATT_HVX_INDICATION;//如果是indicate 则用BLE_GATT_HVX_INDICATION
 		hvx_params.offset = 0;
 		hvx_params.p_len  = &hvx_len;
 		hvx_params.p_data = msg;
 		err_code = sd_ble_gatts_hvx(p_log->conn_handle, &hvx_params);//indicate or notify data
-		if ((err_code == NRF_SUCCESS) && (hvx_len != len)) {
-			err_code = NRF_ERROR_DATA_SIZE;
-		}       
+        //返回BLE_ERROR_GATTS_SYS_ATTR_MISSING
+//        NRF_LOG_INFO("indicate sd_ble_gatts_hvx err_code = %x",err_code);
+//		if ((err_code == NRF_SUCCESS) && (hvx_len != len)) {
+//			err_code = NRF_ERROR_DATA_SIZE;
+//		}    
 	}else {
+        //NRF_LOG_INFO("indicate sd_ble_gatts_hvx err_code = %x",err_code);
 		err_code = NRF_ERROR_INVALID_STATE;
 	}
 
@@ -1039,8 +1067,27 @@ static void sensor1_task(void *p_context){
     NRF_LOG_INFO("I'am sensor1 process");
 }
 
-static void RadioLink_TxTask(void *p_context){
-    NRF_LOG_INFO("I'am radio tx task process");
+static void RadioLink_TxTask(void *p_context){//p_context是一个指针变量，指向一个任意类型的地址
+    st_bleWrite_t *radio_link_data_tx = (st_bleWrite_t *)p_context;
+    
+    //NRF_LOG_INFO("i'am tx task tx data:%x ",radio_link_tx->len);//
+    uint16_t evt = radio_link_data_tx->bleWriteOp;//*((uint16_t*)p_context);//buffer->evt;//*((uint16_t*)p_context);
+    switch(evt){
+        case BLE_INDICATE:
+            NRF_LOG_INFO("into ble indicate TX DATA:%x tx data len = %d",radio_link_data_tx->data[0],radio_link_data_tx->len);
+            //eeg_indicate(data, data_len);
+            break;
+        case BLE_NOTIFY:
+            NRF_LOG_INFO("into ble notify TX DATA:%x tx data len = %d",radio_link_data_tx->data[0],radio_link_data_tx->len);
+            NRF_LOG_INFO("into ble notify");
+            //eeg_notify(data, data_len);
+            break;
+        case BLE_IDLE: 
+            NRF_LOG_INFO("into ble idle");
+            break;
+        default:
+            break;
+    }
 }
 
 static void RadioLink_RxTask(void *p_context){
@@ -1066,13 +1113,50 @@ static void power_management_task(void *p_context){
     //
 }
 
+
+
+
 static void system_task(void *p_context){
+    stEvtBuffer buffer;
+    st_bleWrite_t radio_link_data = {
+        .bleWriteOp = BLE_IDLE,//此处的变量为staitc,初始化为idle,如果不初始化会出现异常
+    };
     uint8_t data_len = 20;
     uint8_t data[20] = {0};
     memset(data,get_time()%255,20);
     eeg_notify(data, data_len);
-    eeg_indicate(data, data_len);
+    if(eeg_indicate(data, data_len) != NRF_SUCCESS){//indicate failed
+        //resend data by indicate
+    }
     //NRF_LOG_INFO("I'am system event process");
+    if(get_time()%5 == 0){
+        radio_link_data.bleWriteOp = BLE_NOTIFY;
+        //radio_link_data.data[0] =0xAA;
+        uint8_t notify_data = 0xAA;
+        memcpy(radio_link_data.data, &notify_data, 20);
+        radio_link_data.len = 20;
+        radio_link_data.status = 1;  
+        
+        buffer.evt = RADIO_TX_OP;
+        buffer.payload = (void *)&radio_link_data;//task的参数
+        mring_queueSend(mrEvtQueue, &buffer);
+    }
+    if(get_time()%10 == 0){
+        radio_link_data.bleWriteOp = BLE_INDICATE;
+        radio_link_data.len = 20;
+        radio_link_data.status = 1;
+        uint8_t indicate_data =0x55;
+        memcpy(radio_link_data.data, &indicate_data, 20);
+        
+        buffer.evt = RADIO_TX_OP;
+        buffer.payload = (void *)&radio_link_data;
+        mring_queueSend(mrEvtQueue, &buffer);
+    }
+}
+
+static void non_system_task(void *p_context){
+    //todo
+    return;
 }
 
 static void task_body(void){
@@ -1087,6 +1171,7 @@ static void task_body(void){
 
 static void task_init(void){
     mrEvtQueue = mring_queueInit(SYS_EVT_QUEUE);//队列初始化(相当于任务初始化)
+    NonEvtQueue = mring_queueInit(NON_EVT_QUEUE);
     mrAfeQueue = mring_queueInit(AFE_I2C_QUEUE);
 	mrAccQueue = mring_queueInit(ACC_I2C_QUEUE);
 }
@@ -1101,6 +1186,12 @@ static void consume_task(){
                         lpcb[buffer.evt-1].func(buffer.payload);
                     }
                 } 
+            }
+            memset((void *)&buffer, 0, sizeof(stEvtBuffer));
+            if(true == mring_queueReceive(NonEvtQueue, (void*)&buffer)){
+                if(buffer.evt != 0 && lpcb[buffer.evt-1].func != NULL){
+                    lpcb[buffer.evt-1].func(buffer.payload);
+                }
             }
         }
     }

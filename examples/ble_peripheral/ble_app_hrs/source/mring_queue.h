@@ -23,6 +23,7 @@ enum queueType
 	SYS_EVT_QUEUE = 0,
 	AFE_I2C_QUEUE = 1,
 	ACC_I2C_QUEUE = 2,
+    NON_EVT_QUEUE = 3,
 
 	QUEUE_MAX,
 };
@@ -48,7 +49,7 @@ typedef struct _t_queue_element
 typedef struct _stEvtBuffer
 {
 	uint16_t	evt;
-	void* payload;
+	void* payload;//task的参数      //该变量只接受另外一个变量的地址eg: stEvtBuffer temp;  temp.payload = &othor_var;
 }stEvtBuffer;
 
 /***************************************
